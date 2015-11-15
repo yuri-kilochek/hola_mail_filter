@@ -261,7 +261,7 @@ function dfaFilter(messages, rules) {
     {
         let nfa = compileRulesToNfa(rules);
         let dfa = convertNfaToDfa(nfa);
-        dfa = minimizeDfa(dfa);
+        //dfa = minimizeDfa(dfa);
 
         alphabetSize = dfa.alphabetSize;
         transitions = new Array(dfa.states.length);
