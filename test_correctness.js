@@ -5,11 +5,15 @@ function generateArguments() {
         return start + Math.floor((end - start) * Math.random());
     }
 
+    function generateLetter() {
+        return String.fromCharCode(generateInt('a'.charCodeAt(0), 'z'.charCodeAt(0) + 1));
+    }
+
     function generateWord() {
-        let length = generateInt(3, 7);
+        let length = generateInt(1, 5);
         let string = '';
         for (let i = 0; i < length; ++i) {
-            string += String.fromCharCode(generateInt('a'.charCodeAt(0), 'z'.charCodeAt(0) + 1));
+            string += generateLetter();
         }
         return string;
     }
@@ -32,6 +36,13 @@ function generateArguments() {
             roll = Math.random();
             if (roll < 0.4) {
                 email += '*'; 
+            } else if (roll < 0.55) {
+                roll = Math.random();
+                if (roll < 0.3) {
+                    email += '?';
+                } else {
+                    email += generateLetter();
+                }
             } else {
                 email += words[generateInt(0, words.length)];
             }
@@ -39,6 +50,13 @@ function generateArguments() {
             roll = Math.random();
             if (roll < 0.4) {
                 email += '*'; 
+            } else if (roll < 0.55) {
+                roll = Math.random();
+                if (roll < 0.3) {
+                    email += '?';
+                } else {
+                    email += generateLetter();
+                }
             } else {
                 email += words[generateInt(0, words.length)];
             }
@@ -114,12 +132,12 @@ function runTests(times) {
         return;
     }
 
-    console.log('\n\n\n---------------');
     let args = generateArguments();
-    console.log(args);
     let res = filter(args.messages, args.rules);
-    console.log(res);
     referenceFilter(args, referenceRes => {
+        console.log('\n\n\n---------------');
+        console.log(args);
+        console.log(res);
         if (!resultsEqual(res, referenceRes)) {
             console.log('\n\n\nMISMATCH!\nReference returned:\n', referenceRes);
             return;
