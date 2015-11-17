@@ -142,7 +142,9 @@ function runTests(times) {
             console.log('\n\n\nMISMATCH!\nReference returned:\n', referenceRes);
             return;
         }
-        runTests((times === undefined) ? undefined : times - 1);
+        setTimeout(() => {
+            runTests((times === undefined) ? undefined : times - 1);
+        }, 10000);
     });
 }
 
