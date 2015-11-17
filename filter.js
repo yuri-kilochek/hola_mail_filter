@@ -260,7 +260,6 @@ function dfaFilter(messages, rules) {
     let actionSequences; {
         let nfa = compileRulesToNfa(rules);
         let dfa = convertNfaToDfa(nfa);
-
         //dfa = minimizeDfa(dfa);
 
         transitions = new Array(dfa.states.length);
@@ -288,11 +287,113 @@ function dfaFilter(messages, rules) {
     return output;
 }
 
-function filter(messages, rules) {
-    return dfaFilter(messages, rules);
+exports.dfaFilter = dfaFilter;
+
+function charSwitchFilter(messages, rules) {
+    let filter;
+    let actionSequences; {
+        let nfa = compileRulesToNfa(rules);
+        let dfa = convertNfaToDfa(nfa);
+        //dfa = minimizeDfa(dfa);
+
+        function isTrap(stateId) {
+            let transitions = dfa.states[stateId].transitions;
+            for (let symbol of dfa.symbols) {
+                if (transitions[symbol] !== stateId) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        function getMostCommonTarget(stateId) {
+            let times = Object.create(null);
+            let transitions = dfa.states[stateId].transitions;
+            for (let symbol of dfa.symbols) {
+                let target = transitions[symbol];
+                times[target] = (times[target] || 0) + 1;
+            }
+            let mostCommonTarget = transitions['\x1F'];
+            let maxTimes = times[mostCommonTarget] || 0;
+            for (let target in times) {
+                target |= 0;
+                if (times[target] > maxTimes) {
+                    mostCommonTarget = target;
+                }
+            }
+            return mostCommonTarget;
+        }
+
+        let code = `
+            'use strict';
+
+            let output = {};
+            for (let id in messages) {
+                let message = messages[id];
+
+                let signature = message.from + '\x1F' + message.to;
+                let signatureLength = signature.length;
+
+                let state = 0;
+              characters:
+                for (let i = 0; i < signatureLength; ++i) {
+                    switch (state) {
+        `;
+
+        for (let stateId = 0; stateId < dfa.states.length; ++stateId) {
+            if (isTrap(stateId)) {
+                code += `
+                      case ${stateId}:
+                        break characters;
+                `;
+                continue;
+            }
+
+            let mostCommonTarget = getMostCommonTarget(stateId);
+
+            code += `
+                      case ${stateId}:
+                        switch (signature[i]) {
+            `;
+
+            for (let symbol of dfa.symbols) {
+                let target = dfa.states[stateId].transitions[symbol];
+                if (target !== mostCommonTarget) {
+                    code += `
+                          case '\\x${symbol.charCodeAt(0).toString(16)}':
+                            state = ${target};
+                            continue characters;
+                    `;
+                }
+            }
+
+            code += `
+                          default:
+                            state = ${mostCommonTarget};
+                            continue characters;
+                        }    
+            `;
+        }
+
+        code += `
+                    }
+                }
+                output[id] = actionSequences[state];
+            }
+            return output;
+        `;
+
+        filter = new Function('messages', 'rules', 'actionSequences', code);
+
+        actionSequences = new Array(dfa.states.length);
+        for (let stateId = 0; stateId < dfa.states.length; ++stateId) {
+            actionSequences[stateId] = dfa.states[stateId].finality.getActionSequence();
+        }
+    }
+
+    return filter(messages, rules, actionSequences);
 }
 
-filter.filter = filter;
+exports.charSwitchFilter = charSwitchFilter;
 
-module.exports = filter;
-
+module.exports = charSwitchFilter;
