@@ -6,7 +6,7 @@ let filter = require('./filter');
 
 let messages = JSON.parse(fs.readFileSync('enron_corpus/messages.json', 'utf8'));
 let rules = JSON.parse(fs.readFileSync('enron_corpus/rules.json', 'utf8'));
-rules = rules.slice(0, 20);
+rules = rules.slice(0, 100);
 console.log(rules);
 let actionSequences = filter(messages, rules);
 for (let id in actionSequences) {

@@ -3,59 +3,69 @@
 function convertNfaToDfa(nfa) {
     let dfa = {};
 
-    let symbolCount = dfa.symbolCount = nfa.symbolCount;
-    dfa.stateCount = 0;
-    dfa.transitions = [];
-    dfa.finishes = [];
+    dfa.states = [];
 
-    let nfaStateIdsToStateId = new Map();
-    let pending = [];
+    let getStateNoFor; {
+        let noById = new Map();
 
-    function getState(nfaStateIds) {
-        let key = Array.from(nfaStateIds).sort().join(',');
-        let stateId = nfaStateIdsToStateId.get(key);
-        if (stateId === undefined) {
-            stateId = dfa.stateCount++;
-            dfa.transitions.push(new Uint32Array(symbolCount));
-            dfa.finishes.push(new Set());
+        getStateNoFor = function getStateNoFor(nfaStates) {
+            let id = [];
+            for (let nfaState of nfaStates) {
+                id.push(nfaState.id);
+            }
+            id.sort();
+            id = id.join('');
 
-            nfaStateIdsToStateId.set(key, stateId);
-            pending.push({
-                stateId,
-                nfaStateIds,
-            });
-        }
-        return stateId;
+            let no = noById.get(id);
+            if (no === undefined) {
+                no = dfa.states.push({
+                    targetForSymbols: Object.create(null),
+                    defaultTarget: undefined,
+                    finishes: new Set(),
+                    nfaStates: nfaStates,
+                }) - 1;
+                noById.set(id, no);
+            }
+            return no;
+        };
     }
     
-    getState(new Set([0]));
-    while (true) {
-        let stateId, nfaStateIds; {
-            let box = pending.pop();
-            if (box === undefined) {
-                break;
-            }
-            stateId = box.stateId;
-            nfaStateIds = box.nfaStateIds;
-        }
-
-        let finishes = dfa.finishes[stateId];
-        for (let nfaStateId of nfaStateIds) {
-            for (let finish of nfa.finishes[nfaStateId]) {
-                finishes.add(finish);
-            }
-        }
-
-        let transitions = dfa.transitions[stateId];
-        for (let symbol = 0; symbol < symbolCount; ++symbol) {
-            let targetNfaStateIds = new Set();
-            for (let nfaStateId of nfaStateIds) {
-                for (let targetNfaStateId of nfa.transitions[nfaStateId][symbol]) {
-                    targetNfaStateIds.add(targetNfaStateId);
+    getStateNoFor(nfa.initials);
+    for (let state of dfa.states) {
+        let targetsForSymbols = new Map();
+        let defaultTargets = new Set();
+        for (let nfaState of state.nfaStates) {
+            if (nfaState.symbol !== null) {
+                let targetsForSymbol = targetsForSymbols.get(nfaState.symbol);
+                if (targetsForSymbol === undefined) {
+                    targetsForSymbol = new Set(defaultTargets);
+                    targetsForSymbols.set(nfaState.symbol, targetsForSymbol);
+                }
+                for (let target of nfaState.targets) {
+                    targetsForSymbol.add(target);
+                }
+            } else {
+                for (let target of nfaState.targets) {
+                    for (let targetsForSymbol of targetsForSymbols.values()) {
+                        targetsForSymbol.add(target);
+                    }
+                    defaultTargets.add(target);
                 }
             }
-            transitions[symbol] = getState(targetNfaStateIds);
+
+            for (let finish of nfaState.finishes) {
+                state.finishes.add(finish);
+            }
         }
+
+        for (let kv of targetsForSymbols) {
+            let symbol = kv[0];
+            let targetsForSymbol = kv[1];
+            state.targetForSymbols[symbol] = getStateNoFor(Array.from(targetsForSymbol));
+        }
+        state.defaultTarget = getStateNoFor(Array.from(defaultTargets));
+
+        delete state.nfaStates;
     }
 
     return dfa;
@@ -135,64 +145,62 @@ function convertNfaToDfa(nfa) {
 function compilePatternsToNfa(patterns) {
     let nfa = {};
 
-    let symbolCount = nfa.symbolCount = 0x80 - 0x20;
-    nfa.stateCount = 0;
-    nfa.transitions = [];
-    nfa.finishes = [];
-
-    function addState() {
-        let stateId = nfa.stateCount++;
-        nfa.transitions.push((() => {
-            let transitions = new Array(symbolCount);
-            for (let i = 0; i < symbolCount; ++i) {
-                transitions[i] = new Set();
-            }
-            return transitions;
-        })());
-        nfa.finishes.push(new Set());
-        return stateId;
+    let states = [];
+    function addState(state) {
+        states.push(state);
+        return state;
     }
 
-    function addTransition(fromId, via, toId) {
-        nfa.transitions[fromId][via].add(toId);
-    }
-
-    let initialId = addState();
-    for (let patternId = 0; patternId < patterns.length; ++patternId) {
-        let pattern = patterns[patternId];
+    nfa.initials = [];
+    for (let i = 0; i < patterns.length; ++i) {
+        let pattern = patterns[i];
         
-        let tailIds = [initialId];
-        for (let character of pattern) {
-            if (character === '*') {
-                let newId = addState();
-                for (let tailId of tailIds) {
-                    for (let symbol = 0; symbol < symbolCount; ++symbol) {
-                        addTransition(tailId, symbol, newId);
-                    }
-                }
-                for (let symbol = 0; symbol < symbolCount; ++symbol) {
-                    addTransition(newId, symbol, newId);
-                }
-                tailIds.push(newId);
-            } else if (character === '?') {
-                let newId = addState();
-                for (let tailId of tailIds) {
-                    for (let symbol = 0; symbol < symbolCount; ++symbol) {
-                        addTransition(tailId, symbol, newId);
-                    }
-                }
-                tailIds = [newId];
-            } else {
-                let newId = addState();
-                let symbol = character.charCodeAt(0) - 0x20;
-                for (let tailId of tailIds) {
-                    addTransition(tailId, symbol, newId);
-                }
-                tailIds = [newId];
+        let initials = [addState({
+            symbol: null,
+            targets: [],
+            finishes: [i],
+        })];
+
+        for (let j = pattern.length - 1; j >= 0; --j) {
+            let symbol = pattern.charAt(j);
+
+            switch (symbol) {
+              case '*':
+                initials.unshift(addState({
+                    symbol: null,
+                    targets: initials,
+                    finishes: [],
+                }));
+                initials = initials.slice();
+                break;
+              case '?':
+                initials = [addState({
+                    symbol: null,
+                    targets: initials,
+                    finishes: [],
+                })];
+                break;
+              default:
+                initials = [addState({
+                    symbol: symbol,
+                    targets: initials,
+                    finishes: [],
+                })];
             }
         }
-        for (let tailId of tailIds) {
-            nfa.finishes[tailId].add(patternId);
+
+        nfa.initials.push(...initials);
+    }
+
+    if (states.length > 0) {
+        let id = new Uint16Array(Math.ceil(Math.log(states.length) / Math.log(0x10000)));
+        for (let state of states) {
+            state.id = String.fromCharCode(...id);
+            for (let i = id.length - 1; i >= 0; ++i) {
+                if (++id[i] !== 0) {
+                    break;
+                }
+            }
         }
     }
 
@@ -201,20 +209,33 @@ function compilePatternsToNfa(patterns) {
 
 function dfaFilter(messages, rules) {
     let fromTransitions, toTransitionss, actionSequencess; {
+        console.time('dfa');
         let fromNfa = compilePatternsToNfa(rules.map(r => r.from));
         let fromDfa = convertNfaToDfa(fromNfa);
-        fromTransitions = fromDfa.transitions;
-
-        toTransitionss = new Array(fromDfa.stateCount);
-        actionSequencess = new Array(fromDfa.stateCount);
-        for (let i = 0; i < fromDfa.stateCount; ++i) {
-            let partialRules = Array.from(fromDfa.finishes[i]).sort().map(i => rules[i]);
+        console.timeEnd('dfa');
+        fromTransitions = new Array(fromDfa.states.length);
+        toTransitionss = new Array(fromDfa.states.length);
+        actionSequencess = new Array(fromDfa.states.length);
+        for (let i = 0; i < fromDfa.states.length; ++i) {
+            fromTransitions[i] = new Uint32Array(0x80 - 0x20);
+            fromTransitions[i].fill(fromDfa.states[i].defaultTarget);
+            for (let symbol in fromDfa.states[i].targetForSymbols) {
+                let target = fromDfa.states[i].targetForSymbols[symbol];
+                fromTransitions[i][symbol.charCodeAt(0) - 0x20] = target;
+            }
+            let partialRules = Array.from(fromDfa.states[i].finishes).sort().map(i => rules[i]);
             let toNfa = compilePatternsToNfa(partialRules.map(r => r.to));
             let toDfa = convertNfaToDfa(toNfa);
-            toTransitionss[i] = toDfa.transitions;
-            let actionSequences = actionSequencess[i] = new Array(toDfa.stateCount);
-            for (let j = 0; j < toDfa.stateCount; ++j) {
-                actionSequences[j] = Array.from(toDfa.finishes[j]).sort().map(i => partialRules[i].action);
+            toTransitionss[i] = new Array(toDfa.states.length)
+            actionSequencess[i] = new Array(toDfa.states.length);
+            for (let j = 0; j < toDfa.states.length; ++j) {
+                toTransitionss[i][j] = new Uint32Array(0x80 - 0x20);
+                toTransitionss[i][j].fill(toDfa.states[j].defaultTarget);
+                for (let symbol in toDfa.states[j].targetForSymbols) {
+                    let target = toDfa.states[j].targetForSymbols[symbol];
+                    toTransitionss[i][j][symbol.charCodeAt(0) - 0x20] = target;
+                }
+                actionSequencess[i][j] = Array.from(toDfa.states[j].finishes).sort().map(i => partialRules[i].action);
             }
         }
     }
