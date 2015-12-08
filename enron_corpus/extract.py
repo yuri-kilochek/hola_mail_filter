@@ -33,8 +33,8 @@ messages = []
 for from_addr, to_addr in extract_all(Path('maildir')):
     messages.append({ 'from': from_addr, 'to': to_addr })
 random.shuffle(messages)
-messages = messages[:10000]
-messages = {str(i).zfill(len(str(len(messages)))): v for i, v in enumerate(messages)}
+messages = messages[:150000]
+messages = {'message' + str(i).zfill(len(str(len(messages)))): v for i, v in enumerate(messages)}
 with open('messages.json', 'w') as messages_file:
     json.dump(messages, messages_file, indent=4, sort_keys=True)
 

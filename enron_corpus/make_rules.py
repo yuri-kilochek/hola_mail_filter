@@ -4,11 +4,10 @@ import random
 with open('messages.json') as messages_file:
     messages = json.load(messages_file)
 
-addresses = set()
+addresses = []
 for message in messages.values():
-    addresses.add(message['from'])
-    addresses.add(message['to'])
-addresses = list(addresses)
+    addresses.append(message['from'])
+    addresses.append(message['to'])
 
 def patternize(what):
     parts = what.split('.')
@@ -21,7 +20,7 @@ def patternize(what):
     parts = '.'.join(parts)
     return parts
 
-addresses = random.sample(addresses, 200)
+addresses = random.sample(addresses, 500)
 for i in range(len(addresses)):
     if random.uniform(0, 1) < 0.05:
         addresses[i] = '*'
@@ -30,11 +29,11 @@ for i in range(len(addresses)):
         parts = list(map(patternize, parts))
         addresses[i] = '@'.join(parts)
 
-froms = addresses[:100]
-tos = addresses[100:]
+froms = addresses[:250]
+tos = addresses[250:]
 rules = []
 for i, (f, t) in enumerate(zip(froms, tos)):
-    rules.append({ 'from': f, 'to': t, 'action': str(i).zfill(len(str(len(froms))))})
+    rules.append({ 'from': f, 'to': t, 'action': 'action' + str(i).zfill(len(str(len(froms))))})
 
 with open('rules.json', 'w') as rules_file:
     json.dump(rules, rules_file, indent=4, sort_keys=True)

@@ -124,28 +124,27 @@ function resultsEqual(a, b) {
     return true;
 }
 
-let filter = require('./filter');
 let referenceFilter = require('./referenceFilter');
 
-function runTests(times) {
-    if (times === 0) {
-        return;
-    }
-
+(function runTests() {
+    console.log('\n\n\n---------------------------');
     let args = generateArguments();
-    let res = filter(args.messages, args.rules);
-    referenceFilter(args, referenceRes => {
-        console.log('\n\n\n---------------');
-        console.log(args);
-        console.log(res);
-        if (!resultsEqual(res, referenceRes)) {
-            console.log('\n\n\nMISMATCH!\nReference returned:\n', referenceRes);
-            return;
+    console.log(args);
+    let resultsByFilter = {};
+    for (let name of require('./filterList')) {
+        let filter = require('./' + name);
+        resultsByFilter[name] = filter(args.messages, args.rules);
+    }
+    referenceFilter(args, referenceResults => {
+        console.log(referenceResults);
+        for (let name in resultsByFilter) {
+            let results = resultsByFilter[name];
+            if (!resultsEqual(results, referenceResults)) {
+                console.log(`\n\n\n!!!MISMATCH!!! in ${name}:\n`, results);
+                return;
+            }
         }
-        setTimeout(() => {
-            runTests((times === undefined) ? undefined : times - 1);
-        }, 10000);
+        setTimeout(runTests, 10000);
     });
-}
+})();
 
-runTests();
