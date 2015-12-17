@@ -1,12 +1,11 @@
 'use strict';
 
 function stringifyId(i, n) {
-    if (n <= 0xFFFF) {
-        return String.fromCharCode(0xFFFF & i);
+    if (n < 0x10000) {
+        return String.fromCharCode(i);
     }
 
-    return String.fromCharCode(0xFFFF & i >> 16,
-                               0xFFFF & i);
+    return String.fromCharCode(i >> 16, i & 0xFFFF);
 }
 
 
