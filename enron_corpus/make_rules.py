@@ -20,7 +20,7 @@ def patternize(what):
     parts = '.'.join(parts)
     return parts
 
-addresses = random.sample(addresses, 500)
+addresses = random.sample(addresses, 2000)
 for i in range(len(addresses)):
     if random.uniform(0, 1) < 0.05:
         addresses[i] = '*'
@@ -29,8 +29,8 @@ for i in range(len(addresses)):
         parts = list(map(patternize, parts))
         addresses[i] = '@'.join(parts)
 
-froms = addresses[:250]
-tos = addresses[250:]
+froms = addresses[:len(addresses) // 2]
+tos = addresses[len(addresses) // 2:]
 rules = []
 for i, (f, t) in enumerate(zip(froms, tos)):
     rules.append({ 'from': f, 'to': t, 'action': 'action' + str(i).zfill(len(str(len(froms))))})
