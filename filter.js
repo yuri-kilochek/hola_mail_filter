@@ -2,30 +2,21 @@
  * Written by Yuri Kilochek <yuri.kilochek@gmail.com>
  * for Hola's "JS challenge Winter 2015: Mail Filtering Engine"
  * at http://hola.org/challenge_mail_filter
+ *
+ * 2015-12-18
  */
 
 'use strict';
 
 function normalizePattern(pattern) {
-    while (true) {
-        let newPattern = pattern.replace('*?', '?*');
-        if (newPattern === pattern) {
-            break;
+    return pattern.replace(/\*+(?:\?+\**)*/g, symbols => {
+        let normalizedSymbols = '';
+        for (let i = symbols.indexOf('?'); i !== -1; i = symbols.indexOf('?', i + 1)) {
+            normalizedSymbols += '?';
         }
 
-        pattern = newPattern;
-    }
-
-    while (true) {
-        let newPattern = pattern.replace('**', '*');
-        if (newPattern === pattern) {
-            break;
-        }
-
-        pattern = newPattern;
-    }
-
-    return pattern;
+        return normalizedSymbols + '*';
+    });
 }
 
 class NfaState {
