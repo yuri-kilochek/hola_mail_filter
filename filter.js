@@ -69,6 +69,16 @@ class Nfa {
     }
 }
 
+function makeNfaStateIdKey(nfaStates) {
+    let nfaStateCount = nfaStates.length;
+    let nfaStateIds = new Buffer(nfaStateCount << 2);
+    for (let nfaStateIndex = 0; nfaStateIndex < nfaStateCount; ++nfaStateIndex) {
+        nfaStateIds.writeUInt32LE(nfaStates[nfaStateIndex].id, nfaStateIndex << 2, true);
+    }
+
+    return nfaStateIds.toString('utf16le');
+}
+
 class DfaState {
     constructor(nfaStates) {
         this.nfaStates = nfaStates;
@@ -127,11 +137,6 @@ class DfaState {
 
         return targetState;
     }
-
-}
-
-function makeNfaStateIdKey(nfaStates) {
-    return nfaStates.map(s => s.id).toString();
 }
 
 class Dfa {
@@ -153,8 +158,7 @@ class Dfa {
 
         let combinedFinish = this.combinedFinishs[key];
         if (combinedFinish === undefined) {
-            let finishs = nfaStates.map(s => s.finish);
-            combinedFinish = this.combinedFinishs[key] = this.combineFinishs(finishs);
+            combinedFinish = this.combinedFinishs[key] = this.combineFinishs(nfaStates.map(s => s.finish));
         }
 
         return combinedFinish;
@@ -178,9 +182,7 @@ class Dfa {
             {
                 let symbolCount = symbols.length;
                 for (let symbolIndex = 0; symbolIndex < symbolCount; ++symbolIndex) {
-                    let symbol = symbols[symbolIndex];
-
-                    state = state.step(this, symbol);
+                    state = state.step(this, symbols[symbolIndex]);
                 }
             }
 
@@ -200,8 +202,10 @@ function filter(messages, rules) {
 
     for (let messageId in messages) {
         let message = messages[messageId];
+
         messages[messageId] = dfa.walk(message.from).walk(message.to);
     }
+
     return messages;
 }
 
