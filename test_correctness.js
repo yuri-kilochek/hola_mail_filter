@@ -133,7 +133,8 @@ let referenceFilter = require('./referenceFilter');
     let resultsByFilter = {};
     for (let name of require('./filterList')) {
         let filter = require('./' + name);
-        resultsByFilter[name] = filter(args.messages, args.rules);
+        let args2 = JSON.parse(JSON.stringify(args));
+        resultsByFilter[name] = filter(args2.messages, args2.rules);
     }
     referenceFilter(args, referenceResults => {
         console.log(referenceResults);
