@@ -1,3 +1,9 @@
+/*
+ * Written by Yuri Kilochek <yuri.kilochek@gmail.com>
+ * for Hola's "JS challenge Winter 2015: Mail Filtering Engine"
+ * at http://hola.org/challenge_mail_filter
+ */
+
 'use strict';
 
 function normalizePattern(pattern) {
