@@ -130,6 +130,10 @@ class DfaState {
 
 }
 
+function makeNfaStateIdKey(nfaStates) {
+    return nfaStates.map(s => s.id).toString();
+}
+
 class Dfa {
     constructor(finishs, extractPattern, combineFinishs) {
         let nfa = new Nfa(finishs, extractPattern);
@@ -145,7 +149,7 @@ class Dfa {
     }
 
     getCombinedFinish(nfaStates) {
-        let key = nfaStates.map(s => s.id).toString();
+        let key = makeNfaStateIdKey(nfaStates);
 
         let combinedFinish = this.combinedFinishs[key];
         if (combinedFinish === undefined) {
@@ -157,7 +161,7 @@ class Dfa {
     }
 
     getState(nfaStates) {
-        let key = nfaStates.map(s => s.id).toString();
+        let key = makeNfaStateIdKey(nfaStates);
 
         let state = this.states[key];
         if (state === undefined) {
