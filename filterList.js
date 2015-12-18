@@ -1,3 +1,3 @@
 module.exports = [
-    'lazyBipartiteDfaFilter',
+    'filter.js',
 ];
