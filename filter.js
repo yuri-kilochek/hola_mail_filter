@@ -28,143 +28,171 @@ function normalizePattern(pattern) {
     return pattern;
 }
 
+class NfaState {
+    constructor(id) {
+        this.id = id;
+        this.finish = null;
+        this.valveSymbol = null;
+        this.targetState = null;
+        this.alternativeTargetState = null;
+    }
+}
+
 class Nfa {
-    constructor(finals, extractPattern) {
+    constructor(finishs, extractPattern) {
         let nextStateId = 0;
 
-        this.final = [];
-        this.gateSymbol = [];
-        this.targetStateIds = [];
-
-        this.initialStateIds = [];
-        for (let n = finals.length, i = 0; i < n; ++i) {
-            let final = finals[i];
-
-            let pattern = extractPattern(final);
+        this.initialStates = [];
+        for (let finish of finishs) {
+            let pattern = extractPattern(finish);
             pattern = normalizePattern(pattern);
 
-            let finalStateId = nextStateId++;
-            this.final[finalStateId] = final;
-            this.targetStateIds[finalStateId] = [];
+            let alternativeInitialState = null;
+            let initialState = new NfaState(nextStateId++);
+            initialState.finish = finish;
+            for (let symbolIndex = pattern.length - 1; symbolIndex >= 0; --symbolIndex) {
+                let symbol = pattern[symbolIndex];
 
-            let initialStateIds = [finalStateId];
-            for (let j = pattern.length - 1; j >= 0; --j) {
-                let symbol = pattern[j];
-
-                let stateId = nextStateId++;
-                this.targetStateIds[stateId] = initialStateIds;
+                let state = new NfaState(nextStateId++);
+                state.targetState = initialState;
                 if (symbol === '*') {
-                    initialStateIds.push(stateId);
+                    state.alternativeTargetState = state;
+                    alternativeInitialState = initialState;
                 } else {
                     if (symbol !== '?') {
-                        this.gateSymbol[stateId] = symbol;
+                        state.valveSymbol = symbol;
                     }
-
-                    initialStateIds = [stateId];
+                
+                    state.alternativeTargetState = alternativeInitialState;
+                    alternativeInitialState = null;
                 }
+
+                initialState = state;
             }
 
-            this.initialStateIds.push(...initialStateIds);
+            this.initialStates.push(initialState);
+            if (alternativeInitialState !== null) {
+                this.initialStates.push(alternativeInitialState);
+            }
         }
     }
 }
 
+class DfaState {
+    constructor(nfaStates) {
+        this.nfaStates = nfaStates;
+        this.combinedFinish = null;
+        this.transitions = Object.create(null);
+    }
+
+    exit(dfa) {
+        let combinedFinish = this.combinedFinish;
+        if (combinedFinish === null) {
+            let finishNfaStates = [];
+            {
+                let nfaStates = this.nfaStates, nfaStateCount = nfaStates.length;
+                for (let nfaStateIndex = 0; nfaStateIndex < nfaStateCount; ++nfaStateIndex) {
+                    let nfaState = nfaStates[nfaStateIndex];
+
+                    if (nfaState.finish !== null) {
+                        finishNfaStates.push(nfaState);
+                    }
+                }
+            }
+
+            combinedFinish = this.combinedFinish = dfa.getCombinedFinish(finishNfaStates);
+        }
+
+        return combinedFinish;
+    }
+
+    step(dfa, symbol) {
+        let transitions = this.transitions;
+
+        let targetState = transitions[symbol];
+        if (targetState === undefined) {
+            let targetNfaStates = [];
+            {
+                let nfaStates = this.nfaStates, nfaStateCount = nfaStates.length;
+                for (let nfaStateIndex = 0; nfaStateIndex < nfaStateCount; ++nfaStateIndex) {
+                    let nfaState = nfaStates[nfaStateIndex];
+
+                    let nfaStateValveSymbol = nfaState.valveSymbol;
+                    if (nfaStateValveSymbol === null || nfaStateValveSymbol === symbol) {
+                        let nfaStateTargetState = nfaState.targetState;
+                        if (nfaStateTargetState !== null) {
+                            targetNfaStates.push(nfaStateTargetState);
+                            let nfaStateAlternativeTargetState = nfaState.alternativeTargetState;
+                            if (nfaStateAlternativeTargetState !== null) {
+                                targetNfaStates.push(nfaStateAlternativeTargetState);
+                            }
+                        }
+                    }
+                }
+            }
+
+            targetState = transitions[symbol] = dfa.getState(targetNfaStates);
+        }
+
+        return targetState;
+    }
+
+}
+
 class Dfa {
-    constructor(finals, extractPattern, combineFinals) {
-        this.nfa = new Nfa(finals, extractPattern);
-        this.combineFinals = combineFinals;
+    constructor(finishs, extractPattern, combineFinishs) {
+        let nfa = new Nfa(finishs, extractPattern);
 
-        this.finalCache = Object.create(null);
-        this.stateIdCache = Object.create(null);
+        this.combineFinishs = combineFinishs;
 
-        this.nextStateId = 0;
+        this.combinedFinishs = Object.create(null);
+        this.states = Object.create(null);
 
-        this.nfaStateIds = [];
-        this.transitions = [];
-        this.final = [];
-
-        this.initialStateId = this.getStateId(this.nfa.initialStateIds);
+        this.initialState = this.getState(nfa.initialStates);
 
         this.cache = Object.create(null);
     }
 
-    getFinal(nfaStateIds) {
-        let key = nfaStateIds.toString();
+    getCombinedFinish(nfaStates) {
+        let key = nfaStates.map(s => s.id).toString();
 
-        let final = this.finalCache[key];
-        if (final === undefined) {
-            let nfaFinals = nfaStateIds.map(nfaStateId => this.nfa.final[nfaStateId]);
-            final = this.finalCache[key] = this.combineFinals(nfaFinals);
+        let combinedFinish = this.combinedFinishs[key];
+        if (combinedFinish === undefined) {
+            let finishs = nfaStates.map(s => s.finish);
+            combinedFinish = this.combinedFinishs[key] = this.combineFinishs(finishs);
         }
 
-        return final;
+        return combinedFinish;
     }
 
-    finalize(stateId) {
-        let final = this.final[stateId];
-        if (final === undefined) {
-            let finalNfaStateIds = [];
-            for (let nfaStateIds = this.nfaStateIds[stateId], n = nfaStateIds.length, i = 0; i < n; ++i) {
-                let nfaStateId = nfaStateIds[i];
+    getState(nfaStates) {
+        let key = nfaStates.map(s => s.id).toString();
 
-                if (this.nfa.final[nfaStateId] !== undefined) {
-                    finalNfaStateIds.push(nfaStateId);
-                }
-            }
-
-            final = this.final[stateId] = this.getFinal(finalNfaStateIds);
+        let state = this.states[key];
+        if (state === undefined) {
+            state = this.states[key] = new DfaState(nfaStates);
         }
 
-        return final;
-    }
-
-    getStateId(nfaStateIds) {
-        let key = nfaStateIds.toString();
-
-        let stateId = this.stateIdCache[key];
-        if (stateId === undefined) {
-            stateId = this.stateIdCache[key] = this.nextStateId++;
-            this.nfaStateIds[stateId] = nfaStateIds;
-            this.transitions[stateId] = Object.create(null);
-        }
-
-        return stateId;
-    }
-
-    step(stateId, symbol) {
-        let transitions = this.transitions[stateId];
-        let targetStateId = transitions[symbol];
-        if (targetStateId === undefined) {
-            let targetNfaStateIds = [];
-            for (let nfaStateIds = this.nfaStateIds[stateId], n = nfaStateIds.length, i = 0; i < n; ++i) {
-                let nfaStateId = nfaStateIds[i];
-
-                let nfaStateGateSymbol = this.nfa.gateSymbol[nfaStateId];
-                if (nfaStateGateSymbol === undefined || nfaStateGateSymbol === symbol) {
-                    targetNfaStateIds.push(...this.nfa.targetStateIds[nfaStateId]);
-                }
-            }
-
-            targetStateId = transitions[symbol] = this.getStateId(targetNfaStateIds);
-        }
-
-        return targetStateId;
+        return state;
     }
 
     walk(symbols) {
-        let final = this.cache[symbols];
-        if (final === undefined) {
-            let stateId = this.initialStateId;
-            for (let n = symbols.length, i = 0; i < n; ++i) {
-                let symbol = symbols[i];
+        let combinedFinish = this.cache[symbols];
+        if (combinedFinish === undefined) {
+            let state = this.initialState;
+            {
+                let symbolCount = symbols.length;
+                for (let symbolIndex = 0; symbolIndex < symbolCount; ++symbolIndex) {
+                    let symbol = symbols[symbolIndex];
 
-                stateId = this.step(stateId, symbol);
+                    state = state.step(this, symbol);
+                }
             }
 
-            final = this.cache[symbols] = this.finalize(stateId);
+            combinedFinish = this.cache[symbols] = state.exit(this);
         }
 
-        return final;
+        return combinedFinish;
     }
 }
 
@@ -175,9 +203,9 @@ function filter(messages, rules) {
         });
     });
 
-    for (let id in messages) {
-        let message = messages[id];
-        messages[id] = dfa.walk(message.from).walk(message.to);
+    for (let messageId in messages) {
+        let message = messages[messageId];
+        messages[messageId] = dfa.walk(message.from).walk(message.to);
     }
     return messages;
 }

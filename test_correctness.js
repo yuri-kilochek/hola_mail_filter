@@ -27,7 +27,7 @@ function generateArguments() {
         return words;
     }
 
-    function generateEmail(words) {
+    function generateEmailPattern(words) {
         let email = '';
         let roll = Math.random();
         if (roll < 0.2) {
@@ -64,11 +64,22 @@ function generateArguments() {
         return email;
     }
 
+    function generateEmail(words) {
+        let email = generateEmailPattern(words);
+        while (email.indexOf('*') !== -1) {
+            email = email.replace('*', generateWord());
+        }
+        while (email.indexOf('?') !== -1) {
+            email = email.replace('?', generateLetter());
+        }
+        return email;
+    }
+
     function generateMessages(words) {
         let messages = {};
 
         for (let i = 0; i < 10; ++i) {
-            messages[i] = {
+            messages['msg' + i] = {
                 from: generateEmail(words),
                 to: generateEmail(words),
             };
@@ -82,9 +93,9 @@ function generateArguments() {
 
         for (let i = 0; i < rules.length; ++i) {
             rules[i] = {
-                from: generateEmail(words),
-                to: generateEmail(words),
-                action: generateWord(),
+                action: 'act' + i,
+                from: generateEmailPattern(words),
+                to: generateEmailPattern(words),
             };
         }
 
