@@ -67,16 +67,6 @@ class Nfa {
     }
 }
 
-function makeNfaStateIdKey(nfaStates) {
-    let nfaStateCount = nfaStates.length;
-    let nfaStateIds = new Buffer(nfaStateCount << 2);
-    for (let nfaStateIndex = 0; nfaStateIndex < nfaStateCount; ++nfaStateIndex) {
-        nfaStateIds.writeUInt32LE(nfaStates[nfaStateIndex].id, nfaStateIndex << 2, true);
-    }
-
-    return nfaStateIds.toString('utf16le');
-}
-
 class DfaState {
     constructor(nfaStates) {
         this.nfaStates = nfaStates;
@@ -143,6 +133,8 @@ class Dfa {
 
         this.combineFinishs = combineFinishs;
 
+        this.nfaStateIdKeyBuffer = new Buffer(1024 << 2);
+
         this.combinedFinishs = Object.create(null);
         this.states = Object.create(null);
 
@@ -151,8 +143,24 @@ class Dfa {
         this.cache = Object.create(null);
     }
 
+    getNfaStateIdKey(nfaStates) {
+        let nfaStateCount = nfaStates.length;
+
+        let nfaStateIdKeyBufferLength = nfaStateCount << 2;
+        let nfaStateIdKeyBuffer = this.nfaStateIdKeyBuffer;
+        if (nfaStateIdKeyBuffer.length < nfaStateIdKeyBufferLength) {
+            nfaStateIdKeyBuffer = this.nfaStateIdKeyBuffer = new Buffer(nfaStateIdKeyBufferLength);
+        }
+
+        for (let nfaStateIndex = 0; nfaStateIndex < nfaStateCount; ++nfaStateIndex) {
+            nfaStateIdKeyBuffer.writeUInt32LE(nfaStates[nfaStateIndex].id, nfaStateIndex << 2, true);
+        }
+
+        return nfaStateIdKeyBuffer.toString('utf16le', 0, nfaStateIdKeyBufferLength);
+    }
+
     getCombinedFinish(nfaStates) {
-        let key = makeNfaStateIdKey(nfaStates);
+        let key = this.getNfaStateIdKey(nfaStates);
 
         let combinedFinish = this.combinedFinishs[key];
         if (combinedFinish === undefined) {
@@ -163,7 +171,7 @@ class Dfa {
     }
 
     getState(nfaStates) {
-        let key = makeNfaStateIdKey(nfaStates);
+        let key = this.getNfaStateIdKey(nfaStates);
 
         let state = this.states[key];
         if (state === undefined) {
