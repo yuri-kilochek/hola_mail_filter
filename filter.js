@@ -110,7 +110,9 @@ class DfaState {
                     if (nfaStateValveSymbol === null || nfaStateValveSymbol === symbol) {
                         let nfaStateTargetState = nfaState.targetState;
                         if (nfaStateTargetState !== null) {
-                            targetNfaStates.push(nfaStateTargetState);
+                            if (targetNfaStates[targetNfaStates.length - 1] !== nfaStateTargetState) {
+                                targetNfaStates.push(nfaStateTargetState);
+                            }
                             let nfaStateAlternativeTargetState = nfaState.alternativeTargetState;
                             if (nfaStateAlternativeTargetState !== null) {
                                 targetNfaStates.push(nfaStateAlternativeTargetState);
