@@ -74,74 +74,6 @@ class Nfa {
     }
 }
 
-class NfaStateSet {
-    constructor(maxStateCount) {
-        this.keyBuffer = new Buffer(maxStateCount << 2);
-        this.states = new Array(maxStateCount);
-        this.stateCount = 0;
-    }
-
-    add(newState) {
-        let states = this.states;
-
-        let newStateIndex = this.stateCount;
-        let newStateId = newState.id;
-        while (newStateIndex > 0) {
-            let stateIndex = newStateIndex - 1;
-            let stateId = states[stateIndex].id;
-
-            if (stateId === newStateId) {
-                return;
-            }
-
-            if (stateId < newStateId) {
-                break;
-            }
-
-            newStateIndex = stateIndex;
-        }
-
-        let stateIndex = this.stateCount++;
-        while (stateIndex > newStateIndex) {
-            let previousStateIndex = stateIndex - 1;
-            states[stateIndex] = states[previousStateIndex];
-            stateIndex = previousStateIndex;
-        }
-
-        states[newStateIndex] = newState;
-    }
-
-    clear() {
-        this.stateCount = 0;
-    }
-
-    getKey() {
-        let states = this.states, stateCount = this.stateCount;
-
-        let keyBuffer = this.keyBuffer;
-        for (let stateIndex = 0; stateIndex < stateCount; ++stateIndex) {
-            keyBuffer.writeUInt32LE(states[stateIndex].id, stateIndex << 2, true);
-        }
-
-        return keyBuffer.toString('utf16le', 0, stateCount << 2);
-    }
-
-    getSorted() {
-        return this.states.slice(0, this.stateCount);
-    }
-
-    getSortedFinishs() {
-        let states = this.states, stateCount = this.stateCount;
-
-        let stateFinishs = new Array(stateCount);
-        for (let stateIndex = 0; stateIndex < stateCount; ++stateIndex) {
-            stateFinishs[stateIndex] = states[stateIndex].finish;
-        }
-
-        return stateFinishs;
-    }
-}
-
 class DfaState {
     constructor(nfaStates) {
         this.nfaStates = nfaStates;
@@ -149,36 +81,34 @@ class DfaState {
         this.transitions = Object.create(null);
     }
 
-    exit(dfa, nfaStateSet) {
+    exit(dfa) {
         let combinedFinish = this.combinedFinish;
         if (combinedFinish === null) {
             let nfaStates = this.nfaStates;
             
-            nfaStateSet.clear();
-
+            let nfaStateSetBuffer = dfa.nfaStateSetBuffer, nfaStateSetSize = 0;
             for (let nfaStateCount = nfaStates.length, nfaStateIndex = 0; nfaStateIndex < nfaStateCount; ++nfaStateIndex) {
                 let nfaState = nfaStates[nfaStateIndex];
 
                 if (nfaState.finish !== null) {
-                    nfaStateSet.add(nfaState);
+                    nfaStateSetBuffer[nfaStateSetSize++] = nfaState;
                 }
             }
 
-            combinedFinish = this.combinedFinish = dfa.getCombinedFinish(nfaStateSet);
+            combinedFinish = this.combinedFinish = dfa.getCombinedFinish(nfaStateSetSize);
         }
 
         return combinedFinish;
     }
 
-    step(dfa, nfaStateSet, symbol) {
+    step(dfa, symbol) {
         let transitions = this.transitions;
 
         let targetState = transitions[symbol];
         if (targetState === undefined) {
             let nfaStates = this.nfaStates;
            
-            nfaStateSet.clear();
-
+            let nfaStateSetBuffer = dfa.nfaStateSetBuffer, nfaStateSetSize = 0;
             for (let nfaStateCount = nfaStates.length, nfaStateIndex = 0; nfaStateIndex < nfaStateCount; ++nfaStateIndex) {
                 let nfaState = nfaStates[nfaStateIndex];
 
@@ -186,16 +116,20 @@ class DfaState {
                 if (nfaStateValve === null || nfaStateValve === symbol) {
                     let nfaStateTarget = nfaState.target;
                     if (nfaStateTarget !== null) {
-                        nfaStateSet.add(nfaStateTarget);
+                        if (nfaStateSetSize < 2 || nfaStateSetBuffer[nfaStateSetSize - 2] !== nfaStateTarget) {
+                            nfaStateSetBuffer[nfaStateSetSize++] = nfaStateTarget;
+                        }
                         let nfaStateOtherTarget = nfaState.otherTarget;
                         if (nfaStateOtherTarget !== null) {
-                            nfaStateSet.add(nfaStateOtherTarget);
+                            if (nfaStateSetSize < 1 || nfaStateSetBuffer[nfaStateSetSize - 1] !== nfaStateOtherTarget) {
+                                nfaStateSetBuffer[nfaStateSetSize++] = nfaStateOtherTarget;
+                            }
                         }
                     }
                 }
             }
 
-            targetState = transitions[symbol] = dfa.getState(nfaStateSet);
+            targetState = transitions[symbol] = dfa.getState(nfaStateSetSize);
         }
 
         return targetState;
@@ -213,40 +147,65 @@ class Dfa {
 
         this.combinedFinishBySymbols = Object.create(null);
 
-        let nfaStates = nfa.initialStates;
+        this.nfaStateSetBuffer = new Array(nfa.stateCount);
+        this.nfaStateSetKeyBuffer = new Buffer(nfa.stateCount << 2);
 
-        let nfaStateSet = this.nfaStateSet = new NfaStateSet(nfa.stateCount);
-
-        for (let nfaStateCount = nfaStates.length, nfaStateIndex = 0; nfaStateIndex < nfaStateCount; ++nfaStateIndex) {
-            let nfaState = nfaStates[nfaStateIndex];
-            nfaStateSet.add(nfaState);
+        for (let count = nfa.initialStates.length, index = 0; index < count; ++index) {
+            this.nfaStateSetBuffer[index] = nfa.initialStates[index];
         }
 
-        this.initialState = this.getState(nfaStateSet);
+        this.initialState = this.getState(nfa.initialStates.length);
     }
 
-    getCombinedFinish(nfaStateSet) {
+    getNfaStatesKey(stateCount) {
+        let states = this.nfaStateSetBuffer;
+
+        let statesKey = this.nfaStateSetKeyBuffer;
+        for (let stateIndex = 0; stateIndex < stateCount; ++stateIndex) {
+            statesKey.writeUInt32LE(states[stateIndex].id, stateIndex << 2, true);
+        }
+
+        return statesKey.toString('utf16le', 0, stateCount << 2);
+    }
+
+    getSortedNfaStateFinishs(stateCount) {
+        let states = this.nfaStateSetBuffer;
+
+        let stateFinishs = new Array(stateCount);
+        for (let stateIndex = 0; stateIndex < stateCount; ++stateIndex) {
+            stateFinishs[stateIndex] = states[stateIndex].finish;
+        }
+
+        return stateFinishs;
+    }
+
+    getCombinedFinish(nfaStateSetSize) {
         let combinedFinishByKey = this.combinedFinishByKey;
 
-        let key = nfaStateSet.getKey();
+        let key = this.getNfaStatesKey(nfaStateSetSize);
 
         let combinedFinish = combinedFinishByKey[key];
         if (combinedFinish === undefined) {
-            let nfaStateFinishs = nfaStateSet.getSortedFinishs();
+            let nfaStateFinishs = this.getSortedNfaStateFinishs(nfaStateSetSize);
             combinedFinish = combinedFinishByKey[key] = this.combineFinishs(nfaStateFinishs);
         }
 
         return combinedFinish;
     }
 
-    getState(nfaStateSet) {
+    getSortedNfaStates(stateCount) {
+        let states = this.nfaStateSetBuffer;
+        return states.slice(0, stateCount);
+    }
+
+    getState(nfaStateSetSize) {
         let stateByKey = this.stateByKey;
 
-        let key = nfaStateSet.getKey();
+        let key = this.getNfaStatesKey(nfaStateSetSize);
 
         let state = stateByKey[key];
         if (state === undefined) {
-            let nfaStates = nfaStateSet.getSorted();
+            let nfaStates = this.getSortedNfaStates(nfaStateSetSize);
             state = stateByKey[key] = new DfaState(nfaStates);
         }
 
@@ -263,10 +222,10 @@ class Dfa {
             let state = this.initialState;
             for (let symbolCount = symbols.length, symbolIndex = 0; symbolIndex < symbolCount; ++symbolIndex) {
                 let symbol = symbols[symbolIndex];
-                state = state.step(this, nfaStateSet, symbol);
+                state = state.step(this, symbol);
             }
 
-            combinedFinish = combinedFinishBySymbols[symbols] = state.exit(this, nfaStateSet);
+            combinedFinish = combinedFinishBySymbols[symbols] = state.exit(this);
         }
 
         return combinedFinish;
